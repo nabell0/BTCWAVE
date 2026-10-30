@@ -1,0 +1,22 @@
+# 환경 변수 / 비밀값 (T04-C11)
+.env
+.env.*
+!.env.example
+
+# 의존성
+node_modules/
+
+# OS / 에디터 잡파일
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# 로그 · 빌드 · 배포 캐시
+*.log
+npm-debug.log*
+dist/
+.vercel/
+.cache/

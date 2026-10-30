@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>오늘의 진짜 정보판</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+KR:wght@500;700;800&family=Syne:wght@700;800&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true"></div>
+
+  <main class="board">
+    <header class="board__brand">
+      <p class="board__eyebrow">BTCWAVE · LIVE</p>
+      <h1 class="board__title">오늘의 진짜 정보판</h1>
+      <p class="board__lead">공개 API로 확인하는 비트코인 실시간 시세</p>
+    </header>
+
+    <div class="board__stage">
+      <section class="quote-card" aria-live="polite" aria-busy="true">
+        <div class="quote-card__top">
+          <span class="quote-card__asset">Bitcoin</span>
+          <div class="quote-card__badges">
+            <span class="quote-card__ticker">BTC</span>
+            <span id="stale-badge" class="quote-card__stale" hidden>오래된 값 (stale)</span>
+          </div>
+        </div>
+
+        <div class="quote-card__price-row">
+          <p id="btc-price" class="quote-card__price">—</p>
+          <span id="btc-unit" class="quote-card__unit">KRW</span>
+        </div>
+        <p id="day-change" class="quote-card__change quote-card__change--empty">
+          이전 기록이 없어 비교할 수 없습니다
+        </p>
+
+        <dl class="quote-card__meta">
+          <div>
+            <dt>출처</dt>
+            <dd id="data-source">출처: CoinGecko API</dd>
+          </div>
+          <div>
+            <dt>출처 시각</dt>
+            <dd id="source-updated">업데이트: —</dd>
+          </div>
+          <div>
+            <dt>조회 시각</dt>
+            <dd id="fetched-at">조회: —</dd>
+          </div>
+          <div>
+            <dt>기준 시간대</dt>
+            <dd id="timezone">KST (한국 표준시)</dd>
+          </div>
+          <div>
+            <dt>상태</dt>
+            <dd id="freshness-label">fresh · error: none</dd>
+          </div>
+        </dl>
+
+        <div id="error-panel" class="quote-card__error" hidden>
+          <p id="error-title" class="quote-card__error-title"></p>
+          <p id="error-action" class="quote-card__error-action"></p>
+        </div>
+
+        <p id="status" class="quote-card__status">가격을 불러오는 중…</p>
+
+        <div class="quote-card__actions">
+          <button id="refresh-btn" class="quote-card__refresh" type="button">다시 조회</button>
+          <button id="retry-btn" class="quote-card__retry" type="button" hidden>다시 시도</button>
+        </div>
+      </section>
+
+      <aside class="mock-panel" aria-label="다섯 가지 실패 합성 시험">
+        <h2 class="mock-panel__title">카드 3 · 합성 시험</h2>
+        <p class="mock-panel__lead">실제 API 대신 프론트엔드에서 실패를 Mock합니다. (T04-C12~C16)</p>
+        <div class="mock-panel__grid">
+          <button type="button" class="mock-panel__btn" data-mock="timeout">
+            느린 외부 응답
+            <span>T04-C12 · timeout</span>
+          </button>
+          <button type="button" class="mock-panel__btn" data-mock="auth">
+            401/403 거절
+            <span>T04-C13 · auth</span>
+          </button>
+          <button type="button" class="mock-panel__btn" data-mock="rate_limit">
+            호출 제한
+            <span>T04-C14 · 429</span>
+          </button>
+          <button type="button" class="mock-panel__btn" data-mock="offline">
+            오프라인 상태
+            <span>T04-C15 · offline</span>
+          </button>
+          <button type="button" class="mock-panel__btn" data-mock="schema">
+            응답 형식 변경
+            <span>T04-C16 · schema</span>
+          </button>
+        </div>
+        <button type="button" id="mock-clear-btn" class="mock-panel__clear">정상 조회 (recover)</button>
+      </aside>
+    </div>
+
+    <section class="history-panel" aria-label="하루 한 줄 일별 기록">
+      <div class="history-panel__head">
+        <div>
+          <h2 class="history-panel__title">카드 4 · 하루 한 줄</h2>
+          <p class="history-panel__lead">
+            KST 날짜 키(<code>YYYY-MM-DD</code>)로 localStorage <code>dailyRecords</code>에 저장합니다. (T04-C20 · C21)
+          </p>
+        </div>
+        <p id="clock-label" class="history-panel__clock">합성 시계: 실시간 · 키 —</p>
+      </div>
+
+      <div class="history-panel__tests">
+        <button type="button" id="clock-same-day-btn" class="history-panel__test-btn">
+          같은 날짜로 3번 강제 실행
+          <span>중복 방지 · 오늘 1건 덮어쓰기</span>
+        </button>
+        <button type="button" id="clock-next-day-btn" class="history-panel__test-btn">
+          다음 날짜로 1번 강제 실행
+          <span>새 건 unshift 추가</span>
+        </button>
+        <button type="button" id="clock-reset-btn" class="history-panel__test-btn history-panel__test-btn--ghost">
+          합성 시계 초기화
+          <span>실시간(KST)으로 복귀</span>
+        </button>
+      </div>
+
+      <ul id="daily-history-list" class="history-panel__list"></ul>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
