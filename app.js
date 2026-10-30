@@ -4,6 +4,7 @@
  * 카드 3: 다섯 가지 실패 Mock + stale 보존 + 복구 (T04-C12~C19)
  * 카드 4: KST 일별 기록 localStorage (T04-C20·C21)
  * 카드 5: 어제 대비 변화량 (T04-C23·C24)
+ * 과제 5: 어제/오늘 가격 비교 바 차트 (T05 TEST-01~10)
  */
 
 const API_URL =
@@ -74,6 +75,7 @@ const els = {
   clockNextDayBtn: document.getElementById("clock-next-day-btn"),
   clockResetBtn: document.getElementById("clock-reset-btn"),
   dayChange: document.getElementById("day-change"),
+  chartRoot: document.getElementById("price-chart-root"),
 };
 
 /** 합성 시계 또는 실시간 Date */
@@ -212,6 +214,160 @@ function updateClockLabel() {
   const key = getKstDateKey(getNow());
   const mode = state.mockNowMs == null ? "실시간" : "합성";
   els.clockLabel.textContent = `합성 시계: ${mode} · 키 ${key}`;
+}
+
+/**
+ * 어제/오늘 가격 비교 바 차트 (과제 5 · AI B 보완)
+ * TEST-01 ~ TEST-07 유지 + TEST-08/09/10 방어·복구 로직
+ * 금지: API fetch / getKstDateKey 미수정
+ */
+function renderPriceChart() {
+  const root = els.chartRoot;
+  if (!root) return;
+  root.innerHTML = "";
+
+  // TEST-06: 오프라인
+  if (!navigator.onLine) {
+    const msg = document.createElement("p");
+    msg.className = "price-chart__message is-error";
+    msg.textContent = "오프라인 상태입니다. 인터넷 연결을 확인해주세요.";
+    root.appendChild(msg);
+    return;
+  }
+
+  // TEST-10: 429 호출 제한 → 차트 영역 복구 UI
+  if (state.errorCode === "rate_limit") {
+    const msg = document.createElement("p");
+    msg.className = "price-chart__message is-error";
+    msg.textContent = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "price-chart__retry";
+    retry.textContent = "잠시 후 다시 시도";
+    retry.addEventListener("click", () => fetchBitcoinPrice({ recover: true }));
+    root.append(msg, retry);
+    return;
+  }
+
+  // TEST-08: 손상된 JSON 예외 처리 → 렌더 중단, 안전 빈 화면
+  let records = [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+      records = parsed;
+    }
+  } catch (error) {
+    console.warn("차트: dailyRecords JSON 손상 — 빈 화면 처리", error);
+    return;
+  }
+
+  const sorted = [...records].sort((a, b) =>
+    String(b.dateKey).localeCompare(String(a.dateKey))
+  );
+
+  // TEST-01: 1건 이하 → 데이터 부족
+  if (sorted.length < 2) {
+    const msg = document.createElement("p");
+    msg.className = "price-chart__message";
+    msg.textContent = "데이터 부족";
+    root.appendChild(msg);
+    return;
+  }
+
+  // TEST-02: 최신 2건 (오늘=sorted[0], 어제/이전=sorted[1])
+  const todayRec = sorted[0];
+  const yesterdayRec = sorted[1];
+  const todayValue = getNormalizedValue(todayRec);
+  const yesterdayValue = getNormalizedValue(yesterdayRec);
+
+  if (todayValue == null || yesterdayValue == null) {
+    const msg = document.createElement("p");
+    msg.className = "price-chart__message";
+    msg.textContent = "데이터 부족";
+    root.appendChild(msg);
+    return;
+  }
+
+  const maxValue = Math.max(todayValue, yesterdayValue, 1);
+  const isFlat = todayValue === yesterdayValue;
+
+  // TEST-03 / TEST-04: 상승 빨강 · 하락 파랑
+  // TEST-09: 동일 가격 → 두 바 동일 높이 + 검정(flat)
+  let todayTone;
+  let yesterdayTone;
+  if (isFlat) {
+    todayTone = "flat";
+    yesterdayTone = "flat";
+  } else if (todayValue > yesterdayValue) {
+    todayTone = "up";
+    yesterdayTone = "muted";
+  } else {
+    todayTone = "down";
+    yesterdayTone = "muted";
+  }
+
+  const bars = document.createElement("div");
+  bars.className = "price-chart__bars";
+
+  const columns = [
+    {
+      label: yesterdayRec.dateKey,
+      value: yesterdayValue,
+      tone: yesterdayTone,
+      caption: "어제(이전)",
+    },
+    {
+      label: todayRec.dateKey,
+      value: todayValue,
+      tone: todayTone,
+      caption: "오늘",
+    },
+  ];
+
+  columns.forEach((col) => {
+    const wrap = document.createElement("div");
+    wrap.className = "price-chart__col";
+    wrap.tabIndex = 0;
+
+    const tooltip = document.createElement("div");
+    tooltip.className = "price-chart__tooltip";
+    // TEST-05: 호버 툴팁에 정확한 가격 표시
+    tooltip.textContent = `${col.label}: ${formatKrw(col.value)} KRW`;
+
+    const track = document.createElement("div");
+    track.className = "price-chart__bar-track";
+
+    const bar = document.createElement("div");
+    bar.className = `price-chart__bar price-chart__bar--${col.tone}`;
+    const heightPct = Math.max(4, Math.round((col.value / maxValue) * 100));
+    bar.style.height = `${heightPct}%`;
+    bar.setAttribute("role", "img");
+    bar.setAttribute(
+      "aria-label",
+      `${col.caption} ${col.label} ${formatKrw(col.value)} KRW`
+    );
+    bar.title = `${col.label}: ${formatKrw(col.value)} KRW`;
+
+    track.appendChild(bar);
+
+    const valueEl = document.createElement("p");
+    valueEl.className = "price-chart__value";
+    valueEl.textContent = formatKrw(col.value);
+
+    const labelEl = document.createElement("p");
+    labelEl.className = "price-chart__label";
+    labelEl.textContent = `${col.caption} · ${col.label}`;
+
+    wrap.append(tooltip, track, valueEl, labelEl);
+    bars.appendChild(wrap);
+  });
+
+  // TEST-07: .price-chart__bars 가 width 100% / grid 로 반응형 축소
+  root.appendChild(bars);
 }
 
 function renderDailyHistory() {
@@ -380,6 +536,7 @@ function applySuccessfulQuote({ parsedPrice, parsedLastUpdatedAt, fetchedAtDate,
   renderStateLabels();
   renderDailyHistory();
   renderDayOverDayChange();
+  renderPriceChart();
   updateClockLabel();
 }
 
@@ -519,6 +676,7 @@ async function fetchBitcoinPrice({ recover = false } = {}) {
     }
 
     renderStateLabels();
+    renderPriceChart();
     const guide = ERROR_GUIDE[code] ?? ERROR_GUIDE.unknown;
     setStatus(`${guide.title} · 다시 시도할 수 있습니다.`, true);
   } finally {
@@ -612,9 +770,13 @@ els.clockSameDayBtn.addEventListener("click", runSameDayTripleTest);
 els.clockNextDayBtn.addEventListener("click", runNextDayOnceTest);
 els.clockResetBtn.addEventListener("click", resetMockClock);
 
+window.addEventListener("online", renderPriceChart);
+window.addEventListener("offline", renderPriceChart);
+
 syncMockButtonUI();
 renderStateLabels();
 updateClockLabel();
 renderDailyHistory();
 renderDayOverDayChange();
+renderPriceChart();
 fetchBitcoinPrice();
